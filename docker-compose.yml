@@ -11,7 +11,7 @@ services:
     ports:
       - "10051:10051"
     depends_on:
-      - zabbix-db
+      - zabbix-init-db
 
   zabbix-web:
     image: zabbix/zabbix-web-apache-mysql:alpine-6.2-latest
@@ -27,6 +27,27 @@ services:
     depends_on:
       - zabbix-server
 
+  zabbix-init-db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: zabbix
+      MYSQL_USER: zabbix
+      MYSQL_PASSWORD: zabbixpass
+    volumes:
+      - zabbix-db-data:/var/lib/mysql
+    entrypoint: >
+      sh -c "
+      echo 'Initializing Zabbix database...';
+      mysql -u root -prootpass -h zabbix-db -e 'CREATE DATABASE IF NOT EXISTS zabbix CHARACTER SET utf8 COLLATE utf8_bin;';
+      mysql -u root -prootpass -h zabbix-db -e 'CREATE USER IF NOT EXISTS \"zabbix\"@\"%\" IDENTIFIED BY \"zabbixpass\";';
+      mysql -u root -prootpass -h zabbix-db -e 'GRANT ALL PRIVILEGES ON zabbix.* TO \"zabbix\"@\"%\";';
+      mysql -u root -prootpass -h zabbix-db zabbix < /docker-entrypoint-initdb.d/schema.sql;
+      mysql -u root -prootpass -h zabbix-db zabbix < /docker-entrypoint-initdb.d/images.sql;
+      mysql -u root -prootpass -h zabbix-db zabbix < /docker-entrypoint-initdb.d/data.sql;
+      echo 'Zabbix database initialized.';
+      "
+
   zabbix-db:
     image: mysql:8.0
     environment:
@@ -36,6 +57,7 @@ services:
       MYSQL_PASSWORD: zabbixpass
     volumes:
       - zabbix-db-data:/var/lib/mysql
+      - ./zabbix-sql-scripts/:/docker-entrypoint-initdb.d/
 
   grafana:
     image: grafana/grafana:latest
